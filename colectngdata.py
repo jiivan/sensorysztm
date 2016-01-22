@@ -1,6 +1,7 @@
 import platform
 #import matplotlib.pyplot as plt
 import linecache
+import logging
 from pyvirtualdisplay import Display
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -30,6 +31,9 @@ critical_max_temp = 9
 
 source_path = os.path.dirname(os.path.realpath(sys.argv[0])) + '/'
 
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger()
+
 
 def PrintException():
         exc_type, exc_obj, tb = sys.exc_info()
@@ -44,6 +48,7 @@ def PrintException():
 def PageGrab(Num):
     #TODO add closing chrome window engin etc after execution
     #TODO optimize to not load images css etc
+    log.debug('Initializing display')
     display = Display(visible=0, size=(800, 600))
     display.start()
     try:
@@ -51,10 +56,20 @@ def PageGrab(Num):
         chromeOptions = webdriver.ChromeOptions()
         prefs = {"profile.managed_default_content_settings.images":1}
         chromeOptions.add_experimental_option("prefs",prefs)
-        if platform.system() == "Darwin":
+        chromeOptions.add_argument("start-maximized")
+        #chromeOptions.set_binary("chrome")
+        log.info('Starting browser driver')
+        if True:
+            driver = webdriver.Chrome(
+                chrome_options=chromeOptions,
+                service_args=["--verbose", "--log-path=driver.log"],
+            )
+        elif platform.system() == "Darwin":
+            log.info('Starting Darwin driver')
             driver = webdriver.Chrome(chrome_options=chromeOptions)
         else:
             chromedriver = "/home/mateusz.kowalczyk/wifitempsensor/wifitempsensor/chromedriver"
+            log.info('Starting chrome driver from %s', chromedriver)
             if not os.access(chromedriver, os.X_OK):
                 print("chromedriver nie jest wykonywalny")
                 sys.exit(1)
@@ -64,6 +79,7 @@ def PageGrab(Num):
         driver.set_window_size(1400,1000)
         driver.implicitly_wait(10)
 
+        log.info('Fetching main page')
         driver.get("https://www.wifisensorcloud.com/")
 
         #Log in
@@ -115,15 +131,16 @@ def PageGrab(Num):
         with open(source_path + 'data/source.html', 'wb') as handle:
             pickle.dump(driver.page_source, handle)
 
-        driver.quit()
     except:
-        display.stop()
         global last_temp
         global last_temp_time
         print("UNKNOWN  - no read temp sth went wrong " + str(last_temp) + " @ " + str(last_temp_time) + ". | /=" + str(last_temp))
+        log.exception('display stop')
         PrintException()
         sys.exit(3)
-    display.stop()
+    finally:
+        driver.quit()
+        display.stop()
 
 
 
