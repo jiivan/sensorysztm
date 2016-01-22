@@ -1,244 +1,270 @@
-import platform
-#import matplotlib.pyplot as plt
+from bs4 import BeautifulSoup
+import datetime
 import linecache
 import logging
+import logging.config
+#import matplotlib.pyplot as plt
+import os
+import os.path
+import pickle
+import pytz
 from pyvirtualdisplay import Display
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
-import time
-import datetime
-import pickle
-from bs4 import BeautifulSoup
-import operator
-import os
-import os.path
+from selenium.webdriver.support.ui import WebDriverWait
 import sys
-import pytz
+import time
 
-tz = pytz.timezone('Europe/Warsaw')
-min_temp = 1
-max_temp = 9
-last_temp = 0
-last_temp_time = None
+# -*- Settings -*-
 
-demanded_temp = min_temp + ((max_temp - min_temp)/2) # dziala dla dodatnich na pewno
+CRITICAL_MIN_TEMP = 1
+CRITICAL_MAX_TEMP = 9
 
-critical_min_temp = 1
-critical_max_temp = 9
+MIN_TEMP = 1
+MAX_TEMP = 9
 
-source_path = os.path.dirname(os.path.realpath(sys.argv[0])) + '/'
+DEMANDED_TEMP = MIN_TEMP + ((MAX_TEMP - MIN_TEMP)/2) # dziala dla dodatnich na pewno
 
-logging.basicConfig(level=logging.DEBUG)
+RESULTS_LIMIT = 10**5
+LOG_DIR = 'log/'
+LOGGING = {
+    'version': 1,
+    #'disable_existing_loggers': True,
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s %(asctime)s %(name)s %(message)s'
+        },
+        'simple': {
+            'format': '%(levelname)s %(name)s %(message)s'
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.WatchedFileHandler',
+            'encoding': 'utf-8',
+            'filename': os.path.join(LOG_DIR, 'app.log'),
+            'formatter': 'verbose',
+        },
+        'file_debug': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.WatchedFileHandler',
+            'encoding': 'utf-8',
+            'filename': os.path.join(LOG_DIR, 'debug.log'),
+            'formatter': 'verbose',
+        },
+    },
+
+    'root': {
+        'handlers': ['console', 'file', 'file_debug',],
+        'level': 'DEBUG',
+    },
+    'loggers': {
+        'selenium': {
+            'handlers': ['file_debug'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },
+        'easyprocess': {
+            'handlers': ['file_debug'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },
+    }
+}
+
+# -*- EO: Settings -*-
+
+logging.config.dictConfig(LOGGING)
 log = logging.getLogger()
 
+class Site(object):
+    TIME_ZONE = pytz.timezone('Europe/Warsaw')
 
-def PrintException():
-        exc_type, exc_obj, tb = sys.exc_info()
-        f = tb.tb_frame
-        lineno = tb.tb_lineno
-        filename = f.f_code.co_filename
-        linecache.checkcache(filename)
-        line = linecache.getline(filename, lineno, f.f_globals)
-        print('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+    def __init__(self, driver):
+        self.driver = driver
+        self.login()
+        self.go_to_datatab()
 
-
-def PageGrab(Num):
-    #TODO add closing chrome window engin etc after execution
-    #TODO optimize to not load images css etc
-    log.debug('Initializing display')
-    display = Display(visible=0, size=(800, 600))
-    display.start()
-    try:
-        #zależne od platformy
-        chromeOptions = webdriver.ChromeOptions()
-        prefs = {"profile.managed_default_content_settings.images":1}
-        chromeOptions.add_experimental_option("prefs",prefs)
-        chromeOptions.add_argument("start-maximized")
-        #chromeOptions.set_binary("chrome")
-        log.info('Starting browser driver')
-        if True:
-            driver = webdriver.Chrome(
-                chrome_options=chromeOptions,
-                service_args=["--verbose", "--log-path=driver.log"],
-            )
-        elif platform.system() == "Darwin":
-            log.info('Starting Darwin driver')
-            driver = webdriver.Chrome(chrome_options=chromeOptions)
-        else:
-            chromedriver = "/home/mateusz.kowalczyk/wifitempsensor/wifitempsensor/chromedriver"
-            log.info('Starting chrome driver from %s', chromedriver)
-            if not os.access(chromedriver, os.X_OK):
-                print("chromedriver nie jest wykonywalny")
-                sys.exit(1)
-            os.environ["webdriver.chrome.driver"] = chromedriver
-            driver = webdriver.Chrome(chromedriver)
-
-        driver.set_window_size(1400,1000)
-        driver.implicitly_wait(10)
-
-        log.info('Fetching main page')
+    def login(self):
+        driver = self.driver
+        log.debug('Fetching main page')
         driver.get("https://www.wifisensorcloud.com/")
 
         #Log in
-        elem = driver.find_element_by_id("cph1_username").send_keys("szuetam@gmail.com")
-        elem2 = driver.find_element_by_name("ctl00$cph1$password").send_keys("DupaDupa08")
-        elem = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "cph1_signin"))
-        )
-        guzik = driver.find_element_by_id("cph1_signin")
-        guzik.click()
+        driver.find_element_by_id("cph1_username").send_keys("szuetam@gmail.com")
+        driver.find_element_by_name("ctl00$cph1$password").send_keys("DupaDupa08")
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "cph1_signin")))
+        driver.find_element_by_id("cph1_signin").click()
+        log.info('Login sent')
 
+    def go_to_datatab(self):
+        driver = self.driver
+        log.debug('Going to datatab')
         #Click "My devices"
-        elem = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "devices"))
-        )
-        mydev = driver.find_element_by_id("devices")
-        mydev.click()
+        WebDriverWait(driver, 10).until( EC.presence_of_element_located((By.ID, "devices")))
+        driver.find_element_by_id("devices").click()
         
         #Pick "sensor niwiski"
         driver.find_element_by_id("cph1_devices_sensorname_0").click()
 
         #Enter "View Data"
-        elem = WebDriverWait(driver, 10).until(
-            EC.text_to_be_present_in_element_value((By.ID, "cph1_devices_selected_0"), "1")
-        )
-        elem = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "cph1_viewgraph"))
-        )
+        WebDriverWait(driver, 10).until( EC.text_to_be_present_in_element_value((By.ID, "cph1_devices_selected_0"), "1"))
+        WebDriverWait(driver, 10).until( EC.presence_of_element_located((By.ID, "cph1_viewgraph")))
         time.sleep(5)
         driver.find_element_by_id("cph1_viewgraph").click()
-  
-        #print("start 10sec wait")
-        #time.sleep(10)
-        #print("end wait")
         time.sleep(11)
 
         #Enter datatab
-        elem = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "cph1_datatab"))
-        )
+        WebDriverWait(driver, 10).until( EC.presence_of_element_located((By.ID, "cph1_datatab")))
         driver.find_element_by_id("cph1_datatab").click()
 
         #Ensured it loaded
-        elem = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "datesortdesc"))
-        )
-        driver.execute_script("selectPage(" + str (Num) + ")")
+        WebDriverWait(driver, 10).until( EC.presence_of_element_located((By.ID, "datesortdesc")))
+        log.info('On datatab')
+
+    def page_grab(self, page_num):
+        driver = self.driver
+        log.debug('Grab page: %d', page_num)
+        driver.execute_script("selectPage(%d)" % (page_num,))
         time.sleep(10)
-        with open(source_path + 'data/source.html', 'wb') as handle:
-            pickle.dump(driver.page_source, handle)
+        log.info('Grabbed page: %d', page_num)
+        return driver.page_source
 
-    except:
-        global last_temp
-        global last_temp_time
-        print("UNKNOWN  - no read temp sth went wrong " + str(last_temp) + " @ " + str(last_temp_time) + ". | /=" + str(last_temp))
-        log.exception('display stop')
-        PrintException()
-        sys.exit(3)
-    finally:
-        driver.quit()
-        display.stop()
+    def page_grab_since(self, last_result):
+        grab_results = {}
+        for page_num in range(1, 19):
+            source = self.page_grab(page_num)
+            grab_results.update(self.page_parse(source))
+            log.info("Grabed and Parsed page %d", page_num)
+            if min(grab_results) < last_result:
+                break
+        return grab_results
 
-
-
-#os.system("python3 test-selenium.py >/dev/null 2>/dev/null")
-
-sys.setrecursionlimit(100000)
-
-results = {}
-
-def PageParse():
-    with open(source_path + 'data/source.html', 'rb') as handle:
-        page_source = pickle.load(handle)
-
-    t = page_source
-    bs2 = BeautifulSoup(t)
-    bs = bs2.find(id='cph1_readingsupdatepanel')
-    bs = bs.find('div', recursive=False)
-    bs = bs.find('table', recursive=False)
-    bs = bs.find('tbody', recursive=False)
-    
-    for row in bs.findAll('tr', recursive=False):
-        #print("row should be tr big----------------------------------------B")
-        #print(row)
+    def page_parse_row(self, row):
         row = row.findAll('tr')[0]
-        #print("row should be 1st tr small in big one-----------------------S")
-        #print(row)
         aux = row.findAll('td', recursive=False)
     
-        #print("aux should be sth")
-        #print(aux)
-        #print("aux[1] should be temp---------------------------------------t")
-        #print(aux[1])
         temp_value = aux[1]
-        #print(temp_value.findAll('span'))
         for temp_value in temp_value.findAll('span'):
-            #print(temp_value)
             temp_value = temp_value.string
             temp_value = float(temp_value[:-2])
     
-        #print("aux[0] should be datetime-----------------------------------temp")
-        #print(aux[0])
-        time_value=\
-                    tz.localize(datetime\
-                       .datetime\
-                            .strptime\
-                               (\
-                                   aux[0]\
-                                       .string\
-                                            .replace(' ', '')\
-                                                .replace('\xa0', ' ')\
-                                                    .replace('\n', ' '),\
-                                " %d/%m/%Y %H:%M:%S "\
-                            ))
+        time_value=self.TIME_ZONE.localize(datetime.datetime.strptime(aux[0].string.replace(' ', '').replace('\xa0', ' ').replace('\n', ' ')," %d/%m/%Y %H:%M:%S "))
 
-        results[time_value] = temp_value
-        #print(time_value, results[time_value])
-    
-    #tu sie konczy parsowanie i zaczyna sie przetwarzanie zapisywanie itp
-    
-    #ladowanie danych calosciowych
-    try:
-        new = pickle.load(open(source_path + 'data/data.dat', 'rb'))
-        results.update(new)
-    except:
-        print("No base data file existed before")
+        return time_value, temp_value
 
-    # przetwarzanie danych pod sanepid
-    sanepid = {}
-    
-    #dla kazdego klucza z results robi sie klucz w sanepid z dokladnoscia co do godziny i uzupelnia go jesli jest lepszy niz wczesniejszy ktory tam byl 
-    for k in results.keys():
-        kh = datetime.datetime(k.year, k.month, k.day, k.hour)
-        if not kh in sanepid.keys():
-            sanepid.update({kh: results[k]})
-        else:
-            if abs(results[k] - demanded_temp) < abs(demanded_temp - sanepid[kh]):
+    def page_parse(self, source):
+        bs2 = BeautifulSoup(source)
+        # TODO one query?
+        bs = bs2.find(id='cph1_readingsupdatepanel')
+        bs = bs.find('div', recursive=False)
+        bs = bs.find('table', recursive=False)
+        bs = bs.find('tbody', recursive=False)
+
+        page_results = {}
+        for row in bs.findAll('tr', recursive=False):
+            time_value, temp_value = self.page_parse_row(row)
+            page_results[time_value] = temp_value
+        return page_results
+
+    def results(self):
+        if not hasattr(self, '_results'):
+            base_path = os.path.join(os.path.dirname(__file__), 'data')
+            if not os.path.exists(base_path):
+                os.makedirs(base_path)
+            results_path = os.path.join(base_path, 'results.dat')
+
+            try:
+                with open(results_path, 'rb') as f:
+                    results = pickle.load(f)
+                log.info('Got %d results since %s till %s from cache.', len(results), min(results), max(results))
+            except OSError:
+                log.warning('No previous results found. Initializing with empty dict.')
+                results = {}
+
+            for key in tuple(reversed(sorted(results)))[RESULTS_LIMIT:]:
+                del results[key]
+
+            try:
+                last_result = max(results)
+            except ValueError:
+                last_result = datetime.datetime.min
+
+            results.update(self.page_grab_since(last_result))
+
+            with open(results_path, 'wb') as f:
+                pickle.dump(results, f)
+
+            self._results = results
+        return self._results
+
+    def sanepid_results(self):
+        # przetwarzanie danych pod sanepid
+        sanepid = {}
+        
+        #dla kazdego klucza z results robi sie klucz w sanepid z dokladnoscia co do godziny i uzupelnia go jesli jest lepszy niz wczesniejszy ktory tam byl 
+        results = self.results()
+        for k in results.keys():
+            kh = datetime.datetime(k.year, k.month, k.day, k.hour)
+            if not kh in sanepid.keys():
                 sanepid.update({kh: results[k]})
+            else:
+                if abs(results[k] - DEMANDED_TEMP) < abs(DEMANDED_TEMP - sanepid[kh]):
+                    sanepid.update({kh: results[k]})
+        return sanepid
 
-    #zapis uzupelnionych juz results do pliku
-    pickle.dump(results, open(source_path + 'data/data.dat', 'wb'))
 
-    #posortowane wersje results i sanepid
-    sorted_results = sorted(results.items(), key=operator.itemgetter(0))
-    global sorted_results_sanepid
-    sorted_results_sanepid = sorted(sanepid.items(), key=operator.itemgetter(0))
-    #for res in sorted_results_sanepid:
-    #    print(res)
-    #zapis danych sanepidowych
-    pickle.dump(sanepid, open(source_path + 'data/data_sanepid.dat', 'wb'))
+def initialize_virtual_display():
+    log.info('Initializing display')
+    display = Display(visible=0, size=(800, 600))
+    display.start()
+    return display
 
-    #wyplucie danych pod nagiosa
-    global last_temp
-    global last_temp_time
-    last_temp = sorted_results[-1][1]
-    last_temp_time = sorted_results[-1][0].strftime("%Y-%m-%d %H:%M:%S")
+def initialize_driver():
+    log.info('Starting browser driver')
+    chrome_options = webdriver.ChromeOptions()
+    prefs = {"profile.managed_default_content_settings.images":1}
+    chrome_options.add_experimental_option("prefs",prefs)
+    driver = webdriver.Chrome(
+        chrome_options=chrome_options,
+        service_args=["--verbose", "--log-path=%s" % (os.path.join(LOG_DIR, 'driver.log'),)],
+    )
 
-def PrintPlot():
-    global sorted_results_sanepid
+    driver.set_window_size(1400,1000)
+    driver.implicitly_wait(10)
+    return driver
+
+sys.setrecursionlimit(100000)
+
+def main():
+    start_time = datetime.datetime.now()
+    display = initialize_virtual_display()
+    try:
+        driver = initialize_driver()
+        try:
+            site = Site(driver)
+            site.results()
+        finally:
+            log.info('Quitting driver...')
+            driver.quit()
+    finally:
+        log.info('Stopping display...')
+        display.stop()
+
+    #PrintPlot(site.sanepid_results())
+    delta = datetime.datetime.now() - start_time
+    log.info('It took only %s, bye!', delta)
+    NagiosOut(site.results())
+
+def PrintPlot(sanepid_results):
+    sorted_results_sanepid = sorted(sanepid_results.items(), key=lambda t: t[0])
     plot_data_time = []
     plot_data_temp = []
     plot_data_help = []
@@ -289,39 +315,34 @@ def PrintPlot():
     #plt.show()
     plt.savefig(month+'.pdf')
 
-def NagiosOut():
-    global last_temp
-    global last_temp_time
-    if last_temp < max_temp and last_temp > min_temp:
+def NagiosOut(results):
+    sorted_results = sorted(results.items(), key=lambda t: t[0])
+
+    #wyplucie danych pod nagiosa
+    last_temp = sorted_results[-1][1]
+    last_temp_time = sorted_results[-1][0].strftime("%Y-%m-%d %H:%M:%S")
+    if last_temp < MAX_TEMP and last_temp > MIN_TEMP:
         print("OK       - temp " + str(last_temp) + " @ " + last_temp_time + ". | /=" + str(last_temp))
         sys.exit(0)
     elif last_temp > critical_max_temp:
             print("CRITICAL - temp " + str(last_temp) + " @ " + last_temp_time + ". | /=" + str(last_temp))
             sys.exit(2)
-    elif last_temp < critical_min_temp:
+    elif last_temp < CRITICAL_MIN_TEMP:
             print("CRITICAL - temp " + str(last_temp) + " @ " + last_temp_time + ". | /=" + str(last_temp))
             sys.exit(2)
-    elif last_temp < min_temp:
+    elif last_temp < MIN_TEMP:
             print("WARNING  - temp " + str(last_temp) + " @ " + last_temp_time + ". | /=" + str(last_temp))
             sys.exit(1)
-    elif last_temp > max_temp:
+    elif last_temp > MAX_TEMP:
             print("WARNING  - temp " + str(last_temp) + " @ " + last_temp_time + ". | /=" + str(last_temp))
             sys.exit(1)
     else:
             print("UNKNOWN  - temp " + str(last_temp) + " @ " + last_temp_time + ". | /=" + str(last_temp))
             sys.exit(3)
 
-def PageGrabParseAll():
-    for Num in range(18):
-        Num=Num+1
-        PageGrab(Num)
-        PageParse()
-        print("Grabed and Parsed page " + str(Num))
-
-PageGrabParseAll()
-PrintPlot()
-NagiosOut()
-
 #TODO jeśli nie odczytuje sie dluzej zeby byl critical
-# todo if ustawic w kolejnosci zeby to mialo sens
 # todo co minute ustawić i nagiosa i wifistrone
+
+
+if __name__ == '__main__':
+    main()
