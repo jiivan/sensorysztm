@@ -1,12 +1,11 @@
 from bs4 import BeautifulSoup
+import csv
 import datetime
-import linecache
 import logging
 import logging.config
 #import matplotlib.pyplot as plt
 import os
 import os.path
-import pickle
 import pytz
 from pyvirtualdisplay import Display
 from selenium import webdriver
@@ -162,7 +161,6 @@ class Site(object):
 
     def page_parse(self, source):
         bs2 = BeautifulSoup(source)
-        # TODO one query?
         bs = bs2.find(id='cph1_readingsupdatepanel')
         bs = bs.find('div', recursive=False)
         bs = bs.find('table', recursive=False)
@@ -179,28 +177,33 @@ class Site(object):
             base_path = os.path.join(os.path.dirname(__file__), 'data')
             if not os.path.exists(base_path):
                 os.makedirs(base_path)
-            results_path = os.path.join(base_path, 'results.dat')
+            results_path = os.path.join(base_path, 'results.csv')
 
+            results = {}
             try:
-                with open(results_path, 'rb') as f:
-                    results = pickle.load(f)
+                with open(results_path, 'r') as f:
+                    csv_reader = csv.reader(f)
+                    for row_no, row in enumerate(csv_reader):
+                        if not row_no < RESULTS_LIMIT:
+                            break
+                        stamp = self.TIME_ZONE.localize(datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S'))
+                        value = float(row[1])
+                        results[stamp] = value
                 log.info('Got %d results since %s till %s from cache.', len(results), min(results), max(results))
-            except OSError:
-                log.warning('No previous results found. Initializing with empty dict.')
-                results = {}
-
-            for key in tuple(reversed(sorted(results)))[RESULTS_LIMIT:]:
-                del results[key]
+            except (ValueError, OSError):
+                log.warning('No previous results found. Continuing with an empty dict.')
 
             try:
                 last_result = max(results)
             except ValueError:
-                last_result = datetime.datetime.min
+                last_result = self.TIME_ZONE.localize(datetime.datetime.min + datetime.timedelta(days=1))
 
             results.update(self.page_grab_since(last_result))
 
-            with open(results_path, 'wb') as f:
-                pickle.dump(results, f)
+            with open(results_path, 'w') as f:
+                csv_writer = csv.writer(f)
+                for key in reversed(sorted(results)):
+                    csv_writer.writerow([key.strftime('%Y-%m-%d %H:%M:%S'), '%.2f' % results[key]])
 
             self._results = results
         return self._results
