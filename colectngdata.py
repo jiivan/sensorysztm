@@ -223,6 +223,19 @@ class Site(object):
                     sanepid.update({kh: results[k]})
         return sanepid
 
+    def results_holes(self):
+        """Sprawdzenie czy nie ma dziur w wynikach."""
+        stamps = sorted(datetime.datetime.strptime(k, '%Y-%m-%d %H:%M:%S') for k in self.results())
+        last_stamp = None
+        for stamp in stamps:
+            if last_stamp is None:
+                last_stamp = stamp
+                continue
+            delta = stamp - last_stamp
+            if delta > datetime.timedelta(hours=1):
+                log.warning('Hole %s between %s and %s', delta, last_stamp, stamp)
+            last_stamp = stamp
+
 
 def initialize_virtual_display():
     log.info('Initializing display')
@@ -263,6 +276,7 @@ def main():
 
     #PrintPlot(site.sanepid_results())
     delta = datetime.datetime.now() - start_time
+    site.results_holes()
     log.info('It took only %s, bye!', delta)
     NagiosOut(site.results())
 
