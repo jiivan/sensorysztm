@@ -271,19 +271,21 @@ def main():
         log.info('Stopping display...')
         display.stop()
 
-    PrintPlot(site.sanepid_results())
+    print_plot(site.sanepid_results())
     delta = datetime.datetime.now() - start_time
     site.results_holes()
     log.info('It took only %s, bye!', delta)
+    pdf_table(site.sanepid_results())
     NagiosOut(site.results())
 
-def PrintPlot(sanepid_results):
+def print_plot(sanepid_results):
     log.info('Plotting...')
     x_ticks = []
     y_values = []
     x_values = []
     x_ticks_values = []
     end_date = max(sanepid_results)
+    #end_date = datetime.datetime(2015, 12, 31, 0, 0, 0)
     start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     for stamp in sorted(sanepid_results):
@@ -314,6 +316,42 @@ def PrintPlot(sanepid_results):
     plt.title("%s Niviski temp" % (start_date.strftime('%Y-%m'),))
     #plt.show()
     plt.savefig('%s.pdf' % (start_date.strftime('%Y-%m'),))
+
+def pdf_table(sanepid_results):
+    latex_template = r'''
+        \documentclass{article}
+        \begin{document}
+        Tabela miesieczna
+        \begin{center}
+            \begin{tabular}{|r|l|}
+                \hline
+                %s
+            \end{tabular}
+        \end{center}
+        \end{document}
+    '''
+    start_date = datetime.datetime(2016, 4, 1)
+    end_date = datetime.datetime(2016, 4, 30)
+    last_stamp = datetime.datetime.min
+    rows = []
+    for stamp in sorted(sanepid_results):
+        if stamp < start_date:
+            continue
+        if stamp > end_date:
+            break
+        if last_stamp.year != stamp.year:
+            s_stamp = stamp.strftime('%Y-%m-%d %Hh')
+        elif last_stamp.month != stamp.month:
+            s_stamp = stamp.strftime('%m-%d %Hh')
+        elif last_stamp.day != stamp.day:
+            s_stamp = stamp.strftime('%d %Hh')
+        else:
+            s_stamp = stamp.strftime('%Hh')
+        rows.append( (s_stamp, sanepid_results[stamp]) )
+        last_stamp = stamp
+    latex_rows = ' \\\\ \\hline\n'.join('%s & %.2f' % r for r in rows)
+    with open('dupa.tex', 'w') as f:
+        f.write(latex_template % latex_rows)
 
 def NagiosOut(results):
     sorted_results = sorted(results.items(), key=lambda t: t[0])
