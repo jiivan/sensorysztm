@@ -3,7 +3,8 @@ import csv
 import datetime
 import logging
 import logging.config
-#import matplotlib.pyplot as plt
+import matplotlib.dates
+import matplotlib.pyplot as plt
 import os
 import os.path
 import pytz
@@ -216,18 +217,14 @@ class Site(object):
         results = self.results()
         for k in results.keys():
             kh = datetime.datetime(k.year, k.month, k.day, k.hour)
-            if not kh in sanepid.keys():
-                sanepid.update({kh: results[k]})
-            else:
-                if abs(results[k] - DEMANDED_TEMP) < abs(DEMANDED_TEMP - sanepid[kh]):
-                    sanepid.update({kh: results[k]})
+            if (kh not in sanepid) or (abs(results[k] - DEMANDED_TEMP) < abs(DEMANDED_TEMP - sanepid[kh])):
+                sanepid[kh] = results[k]
         return sanepid
 
     def results_holes(self):
         """Sprawdzenie czy nie ma dziur w wynikach."""
-        stamps = sorted(datetime.datetime.strptime(k, '%Y-%m-%d %H:%M:%S') for k in self.results())
         last_stamp = None
-        for stamp in stamps:
+        for stamp in sorted(self.results()):
             if last_stamp is None:
                 last_stamp = stamp
                 continue
@@ -274,63 +271,49 @@ def main():
         log.info('Stopping display...')
         display.stop()
 
-    #PrintPlot(site.sanepid_results())
+    PrintPlot(site.sanepid_results())
     delta = datetime.datetime.now() - start_time
     site.results_holes()
     log.info('It took only %s, bye!', delta)
     NagiosOut(site.results())
 
 def PrintPlot(sanepid_results):
-    sorted_results_sanepid = sorted(sanepid_results.items(), key=lambda t: t[0])
-    plot_data_time = []
-    plot_data_temp = []
-    plot_data_help = []
-    plot_data_help_tick = []
-    a=0
-    b=0
-    # figuring out range of data to print
-    year_t = 2016
-    month_t = 1
-    month = str(year_t) + "-" + str(month_t).zfill(2)
-    od = None
-    #to jest ustalanie zakresu od do
-    for tup in sorted_results_sanepid:
-        if od == None and tup[0].strftime("%Y-%m") == str(year_t)  + "-" + str(month_t).zfill(2):
-            od = b
-        if tup[0].strftime("%Y-%m") == str(year_t) + "-" + str(month_t).zfill(2):
-            do = b
-        b=b+1
-   
-    #drukowanie od do
-    for tup in sorted_results_sanepid[od:do]:
-        a=a+1
-        plot_data_help.append(a)
-        #print(tup[0].strftime("%Y-%m-%d %H"))
-        if tup[0].strftime("%H") == "00":
-            #print(tup[0].strftime("%H") + "hura")
-            plot_data_help_tick.append(a)
-            if tup[0].strftime("%d") == "01":
-                plot_data_time.append(tup[0].strftime("%Y-%m-%d"))
-            elif tup[0].strftime("%H") == "00":
-                plot_data_time.append(tup[0].strftime("%d"))
-        #print(plot_data_help_tick)
-        #print(plot_data_help)
-        plot_data_temp.append(tup[1])
+    log.info('Plotting...')
+    x_ticks = []
+    y_values = []
+    x_values = []
+    x_ticks_values = []
+    end_date = max(sanepid_results)
+    start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    for stamp in sorted(sanepid_results):
+        if stamp < start_date:
+            continue
+        if stamp >= end_date:
+            break
+        x_values.append(matplotlib.dates.date2num(stamp))
+        if stamp.hour == 0:
+            x_ticks_values.append(matplotlib.dates.date2num(stamp))
+            if stamp.day == 1:
+                x_ticks.append(stamp.strftime("%Y-%m-%d"))
+            else:
+                x_ticks.append(stamp.strftime("%d"))
+        y_values.append(sanepid_results[stamp])
     # Plot the limit ranges.
-    plt.fill_between([0, do-od], [2, 2], [0, 0], color='red', alpha=.16, linewidth=0)
-    plt.fill_between([0, do-od], [10, 10], [8, 8], color='red', alpha=.16, linewidth=0)
-    #plt.fill_between([0, 59], [30, 30], [15, 15], color='#0000ff', alpha=.04, linewidth=0)
-    plt.plot(plot_data_help, plot_data_temp)
-    plt.axis([0, do-od, 0, 10])
+    plt.fill_between([x_values[0], x_values[-1]], [2, 2], [0, 0], color='red', alpha=.16, linewidth=0)
+    plt.fill_between([x_values[0], x_values[-1]], [10, 10], [8, 8], color='red', alpha=.16, linewidth=0)
+    plt.plot_date(x_values, y_values, '-')
+    plt.axis([x_values[0], x_values[-1], 0, 10])
     plt.grid(True)
     plt.ylabel('temp')
     plt.xlabel('time',)
-    plt.xticks(plot_data_help_tick, plot_data_time, rotation='vertical')
-    plt.yticks([0,1,2,3,4,5,6,7,8,9,10], [0,1,2,3,4,5,6,7,8,9,10])
+    plt.xticks(x_ticks_values, x_ticks, rotation='vertical')
+    plt.yticks(range(11), range(11))
     plt.subplots_adjust(bottom=0.3)
-    plt.title(month + " Niviski temp")
+
+    plt.title("%s Niviski temp" % (start_date.strftime('%Y-%m'),))
     #plt.show()
-    plt.savefig(month+'.pdf')
+    plt.savefig('%s.pdf' % (start_date.strftime('%Y-%m'),))
 
 def NagiosOut(results):
     sorted_results = sorted(results.items(), key=lambda t: t[0])
