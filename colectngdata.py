@@ -319,39 +319,55 @@ def print_plot(sanepid_results):
 
 def pdf_table(sanepid_results):
     latex_template = r'''
-        \documentclass{article}
+        \documentclass[6pt]{article}
         \begin{document}
         Tabela miesieczna
         \begin{center}
-            \begin{tabular}{|r|l|}
+            \begin{tabular}{|l c r|l c r|l c r|l c r|l c r|l c r|l c r|}
                 \hline
-                %s
+                %s \\
+                \hline
+                
             \end{tabular}
+            {\fontsize{5cm}{5.5cm}\selectfont This is big!}
         \end{center}
         \end{document}
     '''
-    start_date = datetime.datetime(2016, 4, 1)
-    end_date = datetime.datetime(2016, 4, 30)
-    last_stamp = datetime.datetime.min
-    rows = []
-    for stamp in sorted(sanepid_results):
-        if stamp < start_date:
+
+    import calendar
+
+    days = {}
+    for date in calendar.Calendar().itermonthdates(2016, 4):
+        days[date] = [None] * 24
+
+    for stamp in sanepid_results:
+        try:
+            days[stamp.date()][stamp.hour] = sanepid_results[stamp]
+        except KeyError:
             continue
-        if stamp > end_date:
-            break
-        if last_stamp.year != stamp.year:
-            s_stamp = stamp.strftime('%Y-%m-%d %Hh')
-        elif last_stamp.month != stamp.month:
-            s_stamp = stamp.strftime('%m-%d %Hh')
-        elif last_stamp.day != stamp.day:
-            s_stamp = stamp.strftime('%d %Hh')
-        else:
-            s_stamp = stamp.strftime('%Hh')
-        rows.append( (s_stamp, sanepid_results[stamp]) )
-        last_stamp = stamp
-    latex_rows = ' \\\\ \\hline\n'.join('%s & %.2f' % r for r in rows)
+
+    table = []
+    sorted_days = sorted(days)
+    for weeknum in range(int(len(days) / 7)):
+        for hour in range(24):
+            current_row = []
+            table.append(current_row)
+            for weekday in range(weeknum, weeknum+7):
+                date = sorted_days[weekday]
+                if not hour:
+                    date_str = '--'
+                else:
+                    date_str = date.strftime('%Y-%m-%d')
+                current_row.append(date_str)
+                current_row.append('%02d' % hour)
+                try:
+                    current_row.append('%.1f' % days[date][hour])
+                except TypeError:
+                    current_row.append('--')
+    latex_rows = (' & '.join(r'\tiny %s' % v for v in row) for row in table)
+    latex_table = ' \\\\\n'.join(latex_rows)
     with open('dupa.tex', 'w') as f:
-        f.write(latex_template % latex_rows)
+        f.write(latex_template % latex_table)
 
 def NagiosOut(results):
     sorted_results = sorted(results.items(), key=lambda t: t[0])
