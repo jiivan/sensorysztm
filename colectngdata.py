@@ -320,18 +320,22 @@ def print_plot(sanepid_results):
 def pdf_table(sanepid_results):
     latex_template = r'''
         \documentclass[6pt]{article}
+        \usepackage{rotating}
         \begin{document}
         Tabela miesieczna
         \begin{center}
+            {\fontsize{5cm}{5.5cm}\selectfont This is big!}
+            %s
+        \end{center}
+        \end{document}
+    '''
+    tabular_template = r'''
+            \renewcommand{\arraystretch}{0.5}
             \begin{tabular}{|l c r|l c r|l c r|l c r|l c r|l c r|l c r|}
                 \hline
                 %s \\
                 \hline
-                
             \end{tabular}
-            {\fontsize{5cm}{5.5cm}\selectfont This is big!}
-        \end{center}
-        \end{document}
     '''
 
     import calendar
@@ -348,16 +352,17 @@ def pdf_table(sanepid_results):
 
     table = []
     sorted_days = sorted(days)
-    for weeknum in range(int(len(days) / 7)):
+    import math
+    for weeknum in range(math.ceil(len(days) / 7)):
         for hour in range(24):
             current_row = []
             table.append(current_row)
-            for weekday in range(weeknum, weeknum+7):
+            for weekday in range(weeknum*7, (weeknum*7)+7):
                 date = sorted_days[weekday]
                 if not hour:
-                    date_str = '--'
+                    date_str = r'\raisebox{0.3cm}{\rotatebox{90}{%s}}' % date.strftime('%Y-%m-%d')
                 else:
-                    date_str = date.strftime('%Y-%m-%d')
+                    date_str = ''
                 current_row.append(date_str)
                 current_row.append('%02d' % hour)
                 try:
@@ -365,9 +370,21 @@ def pdf_table(sanepid_results):
                 except TypeError:
                     current_row.append('--')
     latex_rows = (' & '.join(r'\tiny %s' % v for v in row) for row in table)
-    latex_table = ' \\\\\n'.join(latex_rows)
+    latex_tables = []
+    for cnt, row in enumerate(latex_rows):
+        if cnt % 24 == 0:
+            log.debug('cnt %d new row', cnt)
+            if cnt:
+                latex_table = ' \\\\\n'.join(current_week)
+                latex_tables.append(tabular_template % latex_table)
+            current_week = []
+        current_week.append(row)
+        if cnt == len(table)-1:
+            latex_table = ' \\\\\n'.join(current_week)
+            latex_tables.append(tabular_template % latex_table)
+
     with open('dupa.tex', 'w') as f:
-        f.write(latex_template % latex_table)
+        f.write(latex_template % ('\n'.join(latex_tables),))
 
 def NagiosOut(results):
     sorted_results = sorted(results.items(), key=lambda t: t[0])
