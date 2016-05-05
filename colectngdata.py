@@ -378,12 +378,12 @@ def pdf_table(sanepid_results):
                 current_row.append('%02d' % hour)
                 try:
                     value = days[date][hour]
-                    import random
-                    if random.random() < 0.1:
-                        if random.random() < 0.5:
-                            value = MIN_TEMP - 1
-                        else:
-                            value = MAX_TEMP + 1
+                    #import random
+                    #if random.random() < 0.1:
+                    #    if random.random() < 0.5:
+                    #        value = MIN_TEMP - 1
+                    #    else:
+                    #        value = MAX_TEMP + 1
                     current_row.append('%.1f' % value)
                     if value < MIN_TEMP:
                         current_row[-1] = r'\textcolor{blue}{%s}' % current_row[-1]
