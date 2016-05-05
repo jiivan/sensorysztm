@@ -320,28 +320,35 @@ def print_plot(sanepid_results):
 def pdf_table(sanepid_results):
     latex_template = r'''
         \documentclass[6pt]{article}
+        \usepackage[margin=1cm]{geometry}
         \usepackage{rotating}
+        \usepackage{xcolor}
+        \pagestyle{empty}
         \begin{document}
-        Tabela miesieczna
         \begin{center}
-            {\fontsize{5cm}{5.5cm}\selectfont This is big!}
+            {\fontsize{1.6cm}{0.81cm}\selectfont %s}
+
             %s
         \end{center}
         \end{document}
     '''
     tabular_template = r'''
-            \renewcommand{\arraystretch}{0.5}
-            \begin{tabular}{|l c r|l c r|l c r|l c r|l c r|l c r|l c r|}
+            \renewcommand{\tabcolsep}{0.2mm}
+            \renewcommand{\arraystretch}{0.45}
+            \begin{tabular}{%s}
                 \hline
-                %s \\
+                %%s \\
                 \hline
             \end{tabular}
     '''
+    cols = r'|p{0.4cm} p{2.9mm} p{5mm}|' * 7
+    tabular_template %= cols
 
     import calendar
 
     days = {}
-    for date in calendar.Calendar().itermonthdates(2016, 4):
+    month_d = datetime.date(2016, 4, 1)
+    for date in calendar.Calendar().itermonthdates(month_d.year, month_d.month):
         days[date] = [None] * 24
 
     for stamp in sanepid_results:
@@ -359,17 +366,32 @@ def pdf_table(sanepid_results):
             table.append(current_row)
             for weekday in range(weeknum*7, (weeknum*7)+7):
                 date = sorted_days[weekday]
+                if date.month != month_d.month:
+                    current_row.extend(['']*3)
+                    continue
                 if not hour:
-                    date_str = r'\raisebox{0.3cm}{\rotatebox{90}{%s}}' % date.strftime('%Y-%m-%d')
+                    date_str = r'\raisebox{0.0cm}{\rotatebox{00}{%s}}' % date.strftime('%Y-%m-%d')
+                    date_str = r'%s' % date.strftime('%d')
                 else:
                     date_str = ''
                 current_row.append(date_str)
                 current_row.append('%02d' % hour)
                 try:
-                    current_row.append('%.1f' % days[date][hour])
+                    value = days[date][hour]
+                    import random
+                    if random.random() < 0.1:
+                        if random.random() < 0.5:
+                            value = MIN_TEMP - 1
+                        else:
+                            value = MAX_TEMP + 1
+                    current_row.append('%.1f' % value)
+                    if value < MIN_TEMP:
+                        current_row[-1] = r'\textcolor{blue}{%s}' % current_row[-1]
+                    elif value > MAX_TEMP:
+                        current_row[-1] = r'\textcolor{red}{%s}' % current_row[-1]
                 except TypeError:
                     current_row.append('--')
-    latex_rows = (' & '.join(r'\tiny %s' % v for v in row) for row in table)
+    latex_rows = (' & '.join(r'{\fontsize{0.02cm}{0.01cm}\selectfont %s}' % v for v in row) for row in table)
     latex_tables = []
     for cnt, row in enumerate(latex_rows):
         if cnt % 24 == 0:
@@ -384,7 +406,7 @@ def pdf_table(sanepid_results):
             latex_tables.append(tabular_template % latex_table)
 
     with open('dupa.tex', 'w') as f:
-        f.write(latex_template % ('\n'.join(latex_tables),))
+        f.write(latex_template % (month_d.strftime('%Y-%m'), '\n'.join(latex_tables),))
 
 def NagiosOut(results):
     sorted_results = sorted(results.items(), key=lambda t: t[0])
