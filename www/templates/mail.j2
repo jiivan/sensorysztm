@@ -12,7 +12,7 @@
   {% endif %}
   <ul class="entries">
   {% for entry in entries %}
-    <li><h2>{{ entry|safe }}</h2> <form action="{{ url_for('mail') }}" method="post"> <input type="hidden" name="action" value="del" /><input type="hidden" name="email" value="{{ entry|safe }}" /><input type="submit" value="Del" /></form>
+    <li><h2>{{ entry|escape }}</h2> <form action="{{ url_for('mail') }}" method="post"> <input type="hidden" name="action" value="del" /><input type="hidden" name="email" value="{{ entry|escape }}" /><input type="submit" value="Del" /></form>
   {% else %}
     <li><em>Unbelievable.  No entries here so far</em>
   {% endfor %}

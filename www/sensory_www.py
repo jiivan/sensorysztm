@@ -6,10 +6,13 @@ from flask import request
 from flask import session
 
 app = Flask(__name__)
+app.secret_key = 'slovenia_,oldavia'
 
 def load_config():
     config = configparser.ConfigParser()
     config.read('settings.ini')
+    if 'emails' not in config:
+        config.add_section('emails')
     return config
 
 def save_config(config):
@@ -27,7 +30,7 @@ def mail():
         if request.form['action'] == 'del':
             del config['emails'][email]
         else:
-            config['emails'][email] = None
+            config.set('emails', email, '')
         save_config(config)
         flash('New entry was successfully posted')
     entries = config['emails']
