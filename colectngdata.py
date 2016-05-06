@@ -175,10 +175,14 @@ class Site(object):
 
     def results(self):
         if not hasattr(self, '_results'):
-            base_path = os.path.join(os.path.dirname(__file__), 'data')
-            if not os.path.exists(base_path):
-                os.makedirs(base_path)
-            results_path = os.path.join(base_path, 'results.csv')
+            base_path = os.path.dirname(__file__)
+            data_path = os.path.join(base_path, 'data')
+            tmp_path = os.path.join(base_path, 'tmp')
+            output_path = os.path.join(base_path, 'output')
+            for dirpath in (data_path, tmp_path, output_path):
+                if not os.path.exists(dirpath):
+                    os.makedirs(dirpath)
+            results_path = os.path.join(data_path, 'results.csv')
 
             results = {}
             try:
@@ -315,9 +319,12 @@ def print_plot(sanepid_results):
 
     plt.title("%s Niviski temp" % (start_date.strftime('%Y-%m'),))
     #plt.show()
-    plt.savefig('%s.pdf' % (start_date.strftime('%Y-%m'),))
+    plt.savefig('output/temp-%s-wykres.pdf' % (start_date.strftime('%Y-%m'),))
 
 def pdf_table(sanepid_results):
+    end_date = max(sanepid_results)
+    month_d = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
     latex_template = r'''
         \documentclass[6pt]{article}
         \usepackage[margin=1cm]{geometry}
@@ -347,7 +354,6 @@ def pdf_table(sanepid_results):
     import calendar
 
     days = {}
-    month_d = datetime.date(2016, 4, 1)
     for date in calendar.Calendar().itermonthdates(month_d.year, month_d.month):
         days[date] = [None] * 24
 
@@ -405,7 +411,8 @@ def pdf_table(sanepid_results):
             latex_table = ' \\\\\n'.join(current_week)
             latex_tables.append(tabular_template % latex_table)
 
-    with open('dupa.tex', 'w') as f:
+    filename = month_d.strftime("tmp/temp-%Y-%m-tabela.tex")
+    with open(filename, 'w') as f:
         f.write(latex_template % (month_d.strftime('%Y-%m'), '\n'.join(latex_tables),))
 
 def NagiosOut(results):
