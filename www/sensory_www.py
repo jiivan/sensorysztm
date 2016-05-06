@@ -1,9 +1,11 @@
 import configparser
 from flask import flash
 from flask import Flask
+from flask import redirect
 from flask import render_template
 from flask import request
 from flask import session
+from flask import url_for
 
 app = Flask(__name__)
 app.secret_key = 'slovenia_,oldavia'
@@ -19,6 +21,9 @@ def save_config(config):
     with open('settings.ini', 'w') as f:
         config.write(f)
 
+@app.route('/')
+def main_page():
+    return redirect(url_for('mail'))
 @app.route('/mail', methods=['GET', 'POST'])
 def mail():
     config = load_config()
