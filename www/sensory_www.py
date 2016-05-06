@@ -6,7 +6,6 @@ from flask import request
 from flask import session
 
 app = Flask(__name__)
-app.debug = True
 
 def load_config():
     config = configparser.ConfigParser()
@@ -40,4 +39,5 @@ def test():
 
 
 if __name__ == '__main__':
+    app.debug = True
     app.run()
