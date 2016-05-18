@@ -348,13 +348,16 @@ def pdf_table(sanepid_results):
                 \hline
             \end{tabular}
     '''
-    cols = r'|p{0.4cm} p{2.9mm} p{5mm}|' * 7
+    cols = r'|p{0.4cm} p{2.9mm} p{5mm}|' * 10
     tabular_template %= cols
 
     import calendar
+    import math
 
     days = {}
-    for date in calendar.Calendar().itermonthdates(month_d.year, month_d.month):
+    month_days = calendar.monthrange(month_d.year, month_d.month)[1]
+    for offset in range(math.ceil(month_days / 10)*10):
+        date = month_d + datetime.timedelta(days=offset)
         days[date] = [None] * 24
 
     for stamp in sanepid_results:
@@ -365,13 +368,15 @@ def pdf_table(sanepid_results):
 
     table = []
     sorted_days = sorted(days)
-    import math
-    for weeknum in range(math.ceil(len(days) / 7)):
+    for weeknum in range(math.ceil(len(days) / 10)):
         for hour in range(24):
             current_row = []
             table.append(current_row)
-            for weekday in range(weeknum*7, (weeknum*7)+7):
-                date = sorted_days[weekday]
+            for weekday in range(weeknum*10, (weeknum*10)+10):
+                try:
+                    date = sorted_days[weekday]
+                except IndexError:
+                    break
                 if date.month != month_d.month:
                     current_row.extend(['']*3)
                     continue
