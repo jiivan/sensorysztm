@@ -222,7 +222,7 @@ class Site(object):
         #dla kazdego klucza z results robi sie klucz w sanepid z dokladnoscia co do godziny i uzupelnia go jesli jest lepszy niz wczesniejszy ktory tam byl 
         results = self.results()
         for k in results.keys():
-            kh = datetime.datetime(k.year, k.month, k.day, k.hour)
+            kh = self.TIME_ZONE.localize(datetime.datetime(k.year, k.month, k.day, k.hour))
             if (kh not in sanepid) or (abs(results[k] - DEMANDED_TEMP) < abs(DEMANDED_TEMP - sanepid[kh])):
                 sanepid[kh] = results[k]
         return sanepid
@@ -278,24 +278,50 @@ def main():
         display.stop()
 
     print_plot(site.sanepid_results())
+    print_plot(site.results(), '-full')
+    pdf_table(site.sanepid_results())
+    dump_csv(site.results())
     delta = datetime.datetime.now() - start_time
     site.results_holes()
     log.info('It took only %s, bye!', delta)
-    pdf_table(site.sanepid_results())
     NagiosOut(site.results())
 
-def print_plot(sanepid_results):
+def get_dates_from_argv(data):
+    if len(sys.argv) < 2:
+        end_date = max(data)
+        start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start_date = datetime.datetime.strptime(sys.argv[1], '%Y-%m')
+        end_date = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
+    def _localize(d):
+        if (d.tzinfo is not None) and (d.tzinfo.utcoffset(d) is not None):
+            return d
+        return Site.TIME_ZONE.localize(d)
+    start_date = _localize(start_date)
+    end_date = _localize(end_date)
+    return start_date, end_date
+
+def dump_csv(results):
+    start_date, end_date = get_dates_from_argv(results)
+    log.info('dump_csv %s-%s', start_date, end_date)
+
+    base_path = os.path.dirname(__file__)
+    output_path = os.path.join(base_path, 'output')
+    results_path = os.path.join(output_path, start_date.strftime('temp-%Y-%m.csv'))
+    with open(results_path, 'w') as f:
+        csv_writer = csv.writer(f)
+        for key in sorted(results):
+            if key < start_date or key > end_date:
+                continue
+            csv_writer.writerow([key.strftime('%Y-%m-%d %H:%M:%S'), '%.2f' % results[key]])
+
+def print_plot(sanepid_results, suffix=''):
     log.info('Plotting...')
     x_ticks = []
     y_values = []
     x_values = []
     x_ticks_values = []
-    if len(sys.argv) > 1:
-        start_date = datetime.datetime.strptime(sys.argv[1], '%Y-%m')
-        end_date = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
-    else:
-        end_date = max(sanepid_results)
-        start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    start_date, end_date = get_dates_from_argv(sanepid_results)
 
     log.info('print_plot %s - %s', start_date, end_date)
 
@@ -305,13 +331,18 @@ def print_plot(sanepid_results):
         if stamp >= end_date:
             break
         x_values.append(matplotlib.dates.date2num(stamp))
-        if stamp.hour == 0:
-            x_ticks_values.append(matplotlib.dates.date2num(stamp))
-            if stamp.day == 1:
-                x_ticks.append(stamp.strftime("%Y-%m-%d"))
-            else:
-                x_ticks.append(stamp.strftime("%d"))
         y_values.append(sanepid_results[stamp])
+
+        if stamp.hour == 0:
+            x_stamp = matplotlib.dates.date2num(stamp)
+            if stamp.day == 1:
+                label = stamp.strftime("%Y-%m-%d")
+            else:
+                label = stamp.strftime("%d")
+            if x_ticks and x_ticks[-1] == label:
+                continue
+            x_ticks.append(label)
+            x_ticks_values.append(x_stamp)
     # Plot the limit ranges.
     plt.fill_between([x_values[0], x_values[-1]], [2, 2], [0, 0], color='red', alpha=.16, linewidth=0)
     plt.fill_between([x_values[0], x_values[-1]], [10, 10], [8, 8], color='red', alpha=.16, linewidth=0)
@@ -326,15 +357,10 @@ def print_plot(sanepid_results):
 
     plt.title("%s Niviski temp" % (start_date.strftime('%Y-%m'),))
     #plt.show()
-    plt.savefig('output/temp-%s-wykres.pdf' % (start_date.strftime('%Y-%m'),))
+    plt.savefig('output/temp-%s%s-wykres.pdf' % (start_date.strftime('%Y-%m'), suffix))
 
 def pdf_table(sanepid_results):
-    if len(sys.argv) > 1:
-        month_d = datetime.datetime.strptime(sys.argv[1], '%Y-%m')
-        end_date = month_d.replace(day=calendar.monthrange(month_d.year, month_d.month)[1])
-    else:
-        end_date = max(sanepid_results)
-        month_d = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_d, end_date = get_dates_from_argv(sanepid_results)
     month_d = month_d.date()
 
     log.info('pdf_table %s -%s', month_d, end_date)
