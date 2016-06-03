@@ -1,3 +1,3 @@
 #!/bin/bash
 
-PATH=.:$PATH env/bin/python colectngdata.py
+PATH=.:$PATH env/bin/python colectngdata.py $1

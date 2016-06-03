@@ -1,8 +1,10 @@
 from bs4 import BeautifulSoup
 import csv
+import calendar
 import datetime
 import logging
 import logging.config
+import math
 import matplotlib.dates
 import matplotlib.pyplot as plt
 import os
@@ -288,9 +290,14 @@ def print_plot(sanepid_results):
     y_values = []
     x_values = []
     x_ticks_values = []
-    end_date = max(sanepid_results)
-    #end_date = datetime.datetime(2015, 12, 31, 0, 0, 0)
-    start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if len(sys.argv) > 1:
+        start_date = datetime.datetime.strptime(sys.argv[1], '%Y-%m')
+        end_date = start_date.replace(day=calendar.monthrange(start_date.year, start_date.month)[1])
+    else:
+        end_date = max(sanepid_results)
+        start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    log.info('print_plot %s - %s', start_date, end_date)
 
     for stamp in sorted(sanepid_results):
         if stamp < start_date:
@@ -322,8 +329,15 @@ def print_plot(sanepid_results):
     plt.savefig('output/temp-%s-wykres.pdf' % (start_date.strftime('%Y-%m'),))
 
 def pdf_table(sanepid_results):
-    end_date = max(sanepid_results)
-    month_d = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if len(sys.argv) > 1:
+        month_d = datetime.datetime.strptime(sys.argv[1], '%Y-%m')
+        end_date = month_d.replace(day=calendar.monthrange(month_d.year, month_d.month)[1])
+    else:
+        end_date = max(sanepid_results)
+        month_d = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_d = month_d.date()
+
+    log.info('pdf_table %s -%s', month_d, end_date)
 
     latex_template = r'''
         \documentclass[6pt]{article}
@@ -351,8 +365,6 @@ def pdf_table(sanepid_results):
     cols = r'|p{0.4cm} p{2.9mm} p{5mm}|' * 10
     tabular_template %= cols
 
-    import calendar
-    import math
 
     days = {}
     month_days = calendar.monthrange(month_d.year, month_d.month)[1]
